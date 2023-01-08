@@ -2,17 +2,18 @@ import jax
 import haiku as hk
 import jax.numpy as jnp
 
+from dataclasses import dataclass
 
+
+@dataclass
 class MultiHeadAttention(hk.Module):
     """
     Multi-head attention layer
     """
-
-    def __init__(self, num_heads: int, num_features: int, dropout_rate: float):
-        super().__init__()
-        self.num_heads = num_heads
-        self.num_features = num_features
-        self.dropout_rate = dropout_rate
+    
+    num_heads: int
+    num_features: int
+    dropout_rate: float
         
     def __call__(self, 
                  q: jnp.ndarray, 
@@ -54,15 +55,14 @@ class MultiHeadAttention(hk.Module):
         return jnp.reshape(x, (x.shape[0], x.shape[1], x.shape[2] * x.shape[3]))
 
 
+@dataclass
 class PositionWiseFeedForward(hk.Module):
     """
     Position-wise feed-forward layer, eq (2)
     """
 
-    def __init__(self, num_features: int, dropout_rate: float):
-        super().__init__()
-        self.num_features = num_features
-        self.dropout_rate = dropout_rate
+    num_features: int
+    dropout_rate: float
 
     def __call__(self, x: jnp.ndarray, rng) -> jnp.ndarray:
         # x: (batch_size, seq_len, num_features)
@@ -74,15 +74,14 @@ class PositionWiseFeedForward(hk.Module):
         return x
 
 
+@dataclass
 class Embedding(hk.Module):
     """
     Embedding layer
     """
-
-    def __init__(self, vocab_size: int, num_features: int):
-        super().__init__()
-        self.vocab_size = vocab_size
-        self.num_features = num_features
+    
+    vocab_size: int
+    num_features: int
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         # x: (batch_size, seq_len)
@@ -90,16 +89,15 @@ class Embedding(hk.Module):
         return x
 
 
+@dataclass
 class EncoderLayer(hk.Module):
     """
     Encoder layer
     """
 
-    def __init__(self, num_heads: int, num_features: int, dropout_rate: float):
-        super().__init__()
-        self.num_heads = num_heads
-        self.num_features = num_features
-        self.dropout_rate = dropout_rate
+    num_heads: int
+    num_features: int
+    dropout_rate: float
 
     def __call__(self, x: jnp.ndarray, mask: jnp.ndarray, rng) -> jnp.ndarray:
         # x: (batch_size, seq_len, num_features)
@@ -108,19 +106,18 @@ class EncoderLayer(hk.Module):
         x = attention(x, x, x, mask, rng)
         x = feed_forward(x, rng)
         return x
-    
 
+
+@dataclass
 class Encoder(hk.Module):
     """
     Encoder
     """
 
-    def __init__(self, num_layers: int, num_heads: int, num_features: int, dropout_rate: float):
-        super().__init__()
-        self.num_layers = num_layers
-        self.num_heads = num_heads
-        self.num_features = num_features
-        self.dropout_rate = dropout_rate
+    num_layers: int
+    num_heads: int
+    num_features: int
+    dropout_rate: float
 
     def __call__(self, x: jnp.ndarray, mask: jnp.ndarray, rng) -> jnp.ndarray:
         # x: (batch_size, seq_len, num_features)
@@ -129,16 +126,15 @@ class Encoder(hk.Module):
         return x
     
 
+@dataclass
 class DecoderLayer(hk.Module):
     """
     Decoder layer
     """
 
-    def __init__(self, num_heads: int, num_features: int, dropout_rate: float):
-        super().__init__()
-        self.num_heads = num_heads
-        self.num_features = num_features
-        self.dropout_rate = dropout_rate
+    num_heads: int
+    num_features: int
+    dropout_rate: float
 
     def __call__(self, x: jnp.ndarray, encoder_output: jnp.ndarray, mask: jnp.ndarray, rng) -> jnp.ndarray:
         # x: (batch_size, seq_len, num_features)
@@ -150,17 +146,16 @@ class DecoderLayer(hk.Module):
         return x
 
 
+@dataclass
 class Decoder(hk.Module):
     """
     Decoder
     """
 
-    def __init__(self, num_layers: int, num_heads: int, num_features: int, dropout_rate: float):
-        super().__init__()
-        self.num_layers = num_layers
-        self.num_heads = num_heads
-        self.num_features = num_features
-        self.dropout_rate = dropout_rate
+    num_layers: int
+    num_heads: int
+    num_features: int
+    dropout_rate: float
 
     def __call__(self, x: jnp.ndarray, encoder_output: jnp.ndarray, mask: jnp.ndarray, rng) -> jnp.ndarray:
         # x: (batch_size, seq_len, num_features)
@@ -169,18 +164,17 @@ class Decoder(hk.Module):
         return x
     
 
+@dataclass
 class Transformer(hk.Module):
     """
     Transformer
     """
 
-    def __init__(self, num_layers: int, num_heads: int, vocal_size: int, num_features: int, dropout_rate: float):
-        super().__init__()
-        self.num_layers = num_layers
-        self.num_heads = num_heads
-        self.vocal_size = vocal_size
-        self.num_features = num_features
-        self.dropout_rate = dropout_rate
+    num_layers: int
+    num_heads: int
+    vocal_size: int
+    num_features: int
+    dropout_rate: float
 
     def __call__(self, x: jnp.ndarray, y: jnp.ndarray, mask: jnp.ndarray, rng) -> jnp.ndarray:
         embedding = Embedding(self.vocal_size, self.num_features)
