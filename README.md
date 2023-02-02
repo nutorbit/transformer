@@ -1,6 +1,6 @@
 # transformer
 
-An implementation of transformer [[1]](https://arxiv.org/abs/1706.03762) with Jax
+An implementation of transformer [[1]](https://arxiv.org/abs/1706.03762) in Jax
 
 # References
 
