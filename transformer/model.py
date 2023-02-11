@@ -1,12 +1,10 @@
 import jax
-import haiku as hk
 import jax.numpy as jnp
 
-from dataclasses import dataclass
+from flax import linen as nn
 
 
-@dataclass
-class MultiHeadAttention(hk.Module):
+class MultiHeadAttention(nn.Module):
     """
     Multi-head attention layer
     """
@@ -15,17 +13,18 @@ class MultiHeadAttention(hk.Module):
     num_features: int
     dropout_rate: float
         
+    @nn.compact
     def __call__(self, 
                  q: jnp.ndarray, 
                  v: jnp.ndarray, 
                  k: jnp.ndarray, 
-                 mask: jnp.ndarray, 
-                 rng) -> jnp.ndarray:
+                 mask: jnp.ndarray,
+                 eval_mode: bool) -> jnp.ndarray:
 
         # q, v, k: (batch_size, seq_len, num_features)
-        q = hk.Linear(self.num_features)(q)  
-        v = hk.Linear(self.num_features)(v)
-        k = hk.Linear(self.num_features)(k)
+        q = nn.Dense(self.num_features)(q)  
+        v = nn.Dense(self.num_features)(v)
+        k = nn.Dense(self.num_features)(k)
         q = self.split_heads(q)
         v = self.split_heads(v)
         k = self.split_heads(k)
@@ -34,11 +33,11 @@ class MultiHeadAttention(hk.Module):
         q = q / jnp.sqrt(self.num_features)
         logits = jnp.einsum('ijkl,ijml->ijkm', q, k)
         logits = logits - 1e9 * (1 - mask)
-        weights = jax.nn.softmax(logits)
-        weights = hk.dropout(rng, self.dropout_rate, weights)
+        weights = nn.softmax(logits)
+        weights = nn.Dropout(self.dropout_rate, deterministic=eval_mode)(weights)
         output = weights @ v
         output = self.combine_heads(output)
-        output = hk.Linear(self.num_features)(output)
+        output = nn.Dense(self.num_features)(output)
 
         return output
     
@@ -55,8 +54,7 @@ class MultiHeadAttention(hk.Module):
         return jnp.reshape(x, (x.shape[0], x.shape[1], x.shape[2] * x.shape[3]))
 
 
-@dataclass
-class PositionWiseFeedForward(hk.Module):
+class PositionWiseFeedForward(nn.Module):
     """
     Position-wise feed-forward layer, eq (2)
     """
@@ -64,18 +62,18 @@ class PositionWiseFeedForward(hk.Module):
     num_features: int
     dropout_rate: float
 
-    def __call__(self, x: jnp.ndarray, rng) -> jnp.ndarray:
+    @nn.compact
+    def __call__(self, x: jnp.ndarray, eval_mode: bool) -> jnp.ndarray:
         # x: (batch_size, seq_len, num_features)
-        x = hk.Linear(self.num_features)(x)
-        x = jax.nn.relu(x)
-        x = hk.dropout(rng, self.dropout_rate, x)
-        x = hk.Linear(self.num_features)(x)
-        x = hk.dropout(rng, self.dropout_rate, x)
+        x = nn.Dense(self.num_features)(x)
+        x = nn.relu(x)
+        x = nn.Dropout(self.dropout_rate, deterministic=eval_mode)(x)
+        x = nn.Dense(self.num_features)(x)
+        x = nn.Dropout(self.dropout_rate, deterministic=eval_mode)(x)
         return x
 
 
-@dataclass
-class Embedding(hk.Module):
+class Embedding(nn.Module):
     """
     Embedding layer
     """
@@ -83,14 +81,14 @@ class Embedding(hk.Module):
     vocab_size: int
     num_features: int
 
+    @nn.compact
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         # x: (batch_size, seq_len)
-        x = hk.Embed(self.vocab_size, self.num_features)(x)
+        x = nn.Embed(self.vocab_size, self.num_features)(x)
         return x
 
 
-@dataclass
-class EncoderLayer(hk.Module):
+class EncoderLayer(nn.Module):
     """
     Encoder layer
     """
@@ -99,17 +97,17 @@ class EncoderLayer(hk.Module):
     num_features: int
     dropout_rate: float
 
-    def __call__(self, x: jnp.ndarray, mask: jnp.ndarray, rng) -> jnp.ndarray:
+    @nn.compact
+    def __call__(self, x: jnp.ndarray, mask: jnp.ndarray, eval_mode: bool) -> jnp.ndarray:
         # x: (batch_size, seq_len, num_features)
         attention = MultiHeadAttention(self.num_heads, self.num_features, self.dropout_rate)
         feed_forward = PositionWiseFeedForward(self.num_features, self.dropout_rate)
-        x = attention(x, x, x, mask, rng)
-        x = feed_forward(x, rng)
+        x = attention(x, x, x, mask, eval_mode)
+        x = feed_forward(x, eval_mode)
         return x
 
 
-@dataclass
-class Encoder(hk.Module):
+class Encoder(nn.Module):
     """
     Encoder
     """
@@ -119,15 +117,15 @@ class Encoder(hk.Module):
     num_features: int
     dropout_rate: float
 
-    def __call__(self, x: jnp.ndarray, mask: jnp.ndarray, rng) -> jnp.ndarray:
+    @nn.compact
+    def __call__(self, x: jnp.ndarray, mask: jnp.ndarray, eval_mode: bool) -> jnp.ndarray:
         # x: (batch_size, seq_len, num_features)
         for _ in range(self.num_layers):
-            x = EncoderLayer(self.num_heads, self.num_features, self.dropout_rate)(x, mask, rng)
+            x = EncoderLayer(self.num_heads, self.num_features, self.dropout_rate)(x, mask, eval_mode)
         return x
     
 
-@dataclass
-class DecoderLayer(hk.Module):
+class DecoderLayer(nn.Module):
     """
     Decoder layer
     """
@@ -136,18 +134,18 @@ class DecoderLayer(hk.Module):
     num_features: int
     dropout_rate: float
 
-    def __call__(self, x: jnp.ndarray, encoder_output: jnp.ndarray, mask: jnp.ndarray, rng) -> jnp.ndarray:
+    @nn.compact
+    def __call__(self, x: jnp.ndarray, encoder_output: jnp.ndarray, mask: jnp.ndarray, eval_mode: bool) -> jnp.ndarray:
         # x: (batch_size, seq_len, num_features)
         attention = MultiHeadAttention(self.num_heads, self.num_features, self.dropout_rate)
         feed_forward = PositionWiseFeedForward(self.num_features, self.dropout_rate)
-        x = attention(x, x, x, mask, rng)
-        x = attention(x, encoder_output, encoder_output, mask, rng)
-        x = feed_forward(x, rng)
+        x = attention(x, x, x, mask, eval_mode)
+        x = attention(x, encoder_output, encoder_output, mask, eval_mode)
+        x = feed_forward(x, eval_mode)
         return x
 
 
-@dataclass
-class Decoder(hk.Module):
+class Decoder(nn.Module):
     """
     Decoder
     """
@@ -157,15 +155,15 @@ class Decoder(hk.Module):
     num_features: int
     dropout_rate: float
 
-    def __call__(self, x: jnp.ndarray, encoder_output: jnp.ndarray, mask: jnp.ndarray, rng) -> jnp.ndarray:
+    @nn.compact
+    def __call__(self, x: jnp.ndarray, encoder_output: jnp.ndarray, mask: jnp.ndarray, eval_mode: bool) -> jnp.ndarray:
         # x: (batch_size, seq_len, num_features)
         for _ in range(self.num_layers):
-            x = DecoderLayer(self.num_heads, self.num_features, self.dropout_rate)(x, encoder_output, mask, rng)
+            x = DecoderLayer(self.num_heads, self.num_features, self.dropout_rate)(x, encoder_output, mask, eval_mode)
         return x
     
 
-@dataclass
-class Transformer(hk.Module):
+class Transformer(nn.Module):
     """
     Transformer
     """
@@ -176,31 +174,28 @@ class Transformer(hk.Module):
     num_features: int
     dropout_rate: float
 
-    def __call__(self, x: jnp.ndarray, y: jnp.ndarray, mask: jnp.ndarray, rng) -> jnp.ndarray:
+    @nn.compact
+    def __call__(self, x: jnp.ndarray, y: jnp.ndarray, mask: jnp.ndarray, eval_mode: bool) -> jnp.ndarray:
         embedding = Embedding(self.vocal_size, self.num_features)
         encoder = Encoder(self.num_layers, self.num_heads, self.num_features, self.dropout_rate)
         decoder = Decoder(self.num_layers, self.num_heads, self.num_features, self.dropout_rate)
         x = embedding(x)
         y = embedding(y)
-        x = encoder(x, mask, rng)
-        y = decoder(y, x, mask, rng)
+        x = encoder(x, mask, eval_mode)
+        y = decoder(y, x, mask, eval_mode)
         return y
 
 
 if __name__ == '__main__':
     # Test
-    
-    def f(x: jnp.ndarray, y: jnp.ndarray, mask: jnp.ndarray, rng):
-        return Transformer(2, 2, 100, 64, 0.1)(x, y, mask, rng)
-    
     x = jnp.array([[1, 2, 3], [4, 5, 6]])  # (2, 3)
     y = jnp.array([[1, 2, 3], [4, 5, 6]])  # (2, 3)
     mask = jnp.array([[[[0, 1, 1], [0, 0, 1], [0, 0, 0]]], [[[0, 1, 1], [0, 0, 1], [0, 0, 0]]]])  # (2, 1, 3, 3)
     
-    model = hk.transform(f)
+    model = Transformer(2, 2, 100, 64, 0.1)
     rng = jax.random.PRNGKey(42)
     
     init_rng, rng = jax.random.split(rng)
-    params = model.init(init_rng, x, y, mask, rng)
-    out = model.apply(params, rng, x, y, mask, rng)
+    params = model.init(init_rng, x, y, mask, eval_mode=True)
+    out = model.apply(params, x, y, mask, eval_mode=False, rngs={'dropout': rng})
     print(out.shape)

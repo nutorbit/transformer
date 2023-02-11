@@ -12,8 +12,8 @@ packages = [
 python = "^3.8"
 jax = "^0.4.1"
 jaxlib = "^0.4.1"
-dm-haiku = "^0.0.9"
 optax = "^0.1.4"
+flax = "^0.6.5"
 
 
 [build-system]
